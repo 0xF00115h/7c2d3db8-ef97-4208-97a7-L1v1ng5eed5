@@ -6,6 +6,12 @@
       "title": "Two Coffees",
       "parent": "workshop",
       "issue": 8
+    },
+    {
+      "id": "one-in-ten-i11",
+      "title": "One in Ten",
+      "parent": "workshop",
+      "issue": 11
     }
   ]
 }
