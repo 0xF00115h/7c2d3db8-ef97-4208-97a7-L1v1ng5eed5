@@ -31,6 +31,62 @@
     const wizardDescription=byId('node-description');
     const wizardError=byId('wizard-error');
     let growTarget=null;
+    const API_CONFIG='./assets/node-api.json';
+    const SESSION_KEY='ls_node_session_v1';
+    const PENDING_KEY='ls_pending_node_v1';
+    const authHash=location.hash.match(/^#ls_auth=([A-Za-z0-9_.%-]+)$/);
+    if(authHash){
+      try {sessionStorage.setItem(SESSION_KEY,decodeURIComponent(authHash[1]));}
+      catch(e){console.warn('Cannot save node session',e);}
+      history.replaceState(null,'',location.pathname+location.search);
+    }
+    const bridgePromise=fetch(API_CONFIG,{cache:'no-store'}).then(async response=>{
+      if(!response.ok)return null;
+      const data=await response.json();
+      if(typeof data.baseUrl!=='string'||!/^https:\/\/[-a-zA-Z0-9.]+$/.test(data.baseUrl))return null;
+      return data.baseUrl;
+    }).catch(()=>null);
+    const issueUrl=payload=>{
+      const body='<!-- living-seeds-node-request:v1 -->\n'+'\x60\x60\x60json\n'+JSON.stringify(payload)+'\n\x60\x60\x60';
+      return 'https://github.com/0xF00115h/living-seeds-local/issues/new?'+
+        new URLSearchParams({title:'New node: '+payload.title,body}).toString();
+    };
+    async function createNode(payload){
+      const submit=byId('wizard-submit');
+      submit.disabled=true;wizardError.textContent='Creating node request…';
+      try{
+        const api=await bridgePromise;
+        if(!api){
+          wizardError.textContent='Direct GitHub submission is not configured. Opening the GitHub issue form.';
+          location.assign(issueUrl(payload));
+          return;
+        }
+        const ticket=sessionStorage.getItem(SESSION_KEY);
+        if(!ticket){
+          sessionStorage.setItem(PENDING_KEY,JSON.stringify(payload));
+          location.assign(api+'/auth/start');
+          return;
+        }
+        const response=await fetch(api+'/api/nodes',{method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+ticket},
+          body:JSON.stringify(payload)});
+        const result=await response.json();
+        if(response.status===401){
+          sessionStorage.removeItem(SESSION_KEY);
+          sessionStorage.setItem(PENDING_KEY,JSON.stringify(payload));
+          location.assign(api+'/auth/start');
+          return;
+        }
+        if(!response.ok)throw Error(result.error||'GitHub issue creation failed');
+        sessionStorage.removeItem(PENDING_KEY);
+        wizardError.textContent='Created GitHub request #'+result.number+'. The stub will publish automatically.';
+        submit.textContent='Created';
+        window.setTimeout(()=>{wizard.close();submit.textContent='Create node';},1800);
+      }catch(e){
+        wizardError.textContent=String(e.message||e);
+      }finally{submit.disabled=false;}
+    }
+
     function openWizard(id){
       const node=pages.find(p=>p.id===id);
       if(!node)return;
@@ -53,12 +109,7 @@
       if(title.length>80||description.length>500){
         wizardError.textContent='Please shorten the request.';return;
       }
-      const payload={operation,target:growTarget,title,description};
-      const body='<!-- living-seeds-node-request:v1 -->\n'+'\x60\x60\x60json\n'+JSON.stringify(payload)+'\n\x60\x60\x60';
-      const params=new URLSearchParams({title:'New node: '+title,body});
-      const url='https://github.com/0xF00115h/living-seeds-local/issues/new?'+params.toString();
-      wizard.close();
-      window.open(url,'_blank','noopener,noreferrer');
+      createNode({operation,target:growTarget,title,description});
     });
     function renderTree(){
       erase(treePanel);
@@ -196,6 +247,22 @@
           button.textContent=item.title;button.addEventListener('click',()=>display(item.id));navigation.appendChild(button);
         }
         display(data.home);
+        try{
+          const pending=sessionStorage.getItem(PENDING_KEY);
+          if(pending){
+            const payload=JSON.parse(pending);
+            sessionStorage.removeItem(PENDING_KEY);
+            const node=pages.find(p=>p.id===payload.target);
+            if(node){
+              openWizard(node.id);
+              wizard.querySelector('input[value="'+payload.operation+'"]').checked=true;
+              wizardTitle.value=payload.title;
+              wizardDescription.value=payload.description;
+              createNode(payload);
+            }
+          }
+        }catch(e){console.warn('Pending node request could not resume',e);}
+
         input.value='';gate.hidden=true;experience.hidden=false;status.textContent='';
       }catch(error){
         status.textContent=error.name==='OperationError'?'Incorrect key or damaged bundle.':String(error.message||'Unable to unlock.');
