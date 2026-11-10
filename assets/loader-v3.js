@@ -25,6 +25,41 @@
       return Uint8Array.from(atob(base64+'='.repeat((4-base64.length%4)%4)),char=>char.charCodeAt(0));
     }
     function erase(node){while(node.lastChild)node.removeChild(node.lastChild);}
+    const wizard=byId('node-wizard');
+    const wizardOrigin=byId('wizard-origin');
+    const wizardTitle=byId('node-title');
+    const wizardDescription=byId('node-description');
+    const wizardError=byId('wizard-error');
+    let growTarget=null;
+    function openWizard(id){
+      const node=pages.find(p=>p.id===id);
+      if(!node)return;
+      growTarget=id;
+      wizardTitle.value='';
+      wizardDescription.value='';
+      wizardError.textContent='';
+      wizard.querySelector('input[value="spawn"]').checked=true;
+      wizardOrigin.textContent='Grow from '+node.title;
+      wizard.showModal();
+      wizardTitle.focus();
+    }
+    byId('wizard-close').addEventListener('click',()=>wizard.close());
+    byId('wizard-submit').addEventListener('click',()=>{
+      const operation=wizard.querySelector('input[name="growth"]:checked').value;
+      const title=wizardTitle.value.trim(),description=wizardDescription.value.trim();
+      if(!growTarget||title.length<1||description.length<1){
+        wizardError.textContent='Name and first idea are required.';return;
+      }
+      if(title.length>80||description.length>500){
+        wizardError.textContent='Please shorten the request.';return;
+      }
+      const payload={operation,target:growTarget,title,description};
+      const body='<!-- living-seeds-node-request:v1 -->\n'+'\x60\x60\x60json\n'+JSON.stringify(payload)+'\n\x60\x60\x60';
+      const params=new URLSearchParams({title:'New node: '+title,body});
+      const url='https://github.com/0xF00115h/living-seeds-local/issues/new?'+params.toString();
+      wizard.close();
+      window.open(url,'_blank','noopener,noreferrer');
+    });
     function renderTree(){
       erase(treePanel);
       const heading=document.createElement('h1');heading.textContent='The Tree';treePanel.appendChild(heading);
@@ -40,8 +75,16 @@
         for(const p of children.get(parent)||[]){
           if(visited.has(p.id))continue;
           visited.add(p.id);
-          const li=document.createElement('li'),btn=document.createElement('button');
-          btn.type='button';btn.textContent=p.title;btn.addEventListener('click',()=>display(p.id));li.appendChild(btn);
+          const li=document.createElement('li'),nodeRow=document.createElement('div');
+          nodeRow.className='tree-node';
+          const btn=document.createElement('button');
+          btn.type='button';btn.textContent=p.title;btn.addEventListener('click',()=>display(p.id));nodeRow.appendChild(btn);
+          const add=document.createElement('button');
+          add.type='button';add.className='tree-add';add.textContent='+';
+          add.setAttribute('aria-label','Add node from '+p.title);
+          add.title='Spawn or sibling from '+p.title;
+          add.addEventListener('click',()=>openWizard(p.id));
+          nodeRow.appendChild(add);li.appendChild(nodeRow);
           if(depth<pages.length)populate(p.id,depth+1,li);
           list.appendChild(li);
         }
@@ -55,6 +98,9 @@
         for(const p of missing){
           const btn=document.createElement('button');btn.type='button';btn.textContent=p.title;
           btn.addEventListener('click',()=>display(p.id));section.appendChild(btn);
+          const add=document.createElement('button');add.type='button';add.className='tree-add';
+          add.textContent='+';add.setAttribute('aria-label','Add node from '+p.title);
+          add.addEventListener('click',()=>openWizard(p.id));section.appendChild(add);
         }
         treePanel.appendChild(section);
       }
@@ -101,7 +147,7 @@
       }finally{unlock.disabled=false;}
     });
     lock.addEventListener('click',()=>{
-      pages=[];frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;erase(treePanel);erase(navigation);experience.hidden=true;gate.hidden=false;input.value='';
+      wizard.close();growTarget=null;pages=[];frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;erase(treePanel);erase(navigation);experience.hidden=true;gate.hidden=false;input.value='';
       document.title='Living Seeds — Invitation';input.focus();
     });
   }
