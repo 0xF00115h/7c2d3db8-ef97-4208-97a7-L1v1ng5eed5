@@ -58,7 +58,7 @@
         const api=await bridgePromise;
         if(!api){
           wizardError.textContent='Direct GitHub submission is not configured. Opening the GitHub issue form.';
-          window.open(issueUrl(payload),'_blank','noopener,noreferrer');
+          location.assign(issueUrl(payload));
           return;
         }
         const ticket=sessionStorage.getItem(SESSION_KEY);
