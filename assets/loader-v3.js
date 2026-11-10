@@ -54,7 +54,7 @@
         wizardError.textContent='Please shorten the request.';return;
       }
       const payload={operation,target:growTarget,title,description};
-      const body='<!-- living-seeds-node-request:v1 -->\\n'+'\\x60\\x60\\x60json\\n'+JSON.stringify(payload)+'\\n\\x60\\x60\\x60';
+      const body='<!-- living-seeds-node-request:v1 -->\n'+'\x60\x60\x60json\n'+JSON.stringify(payload)+'\n\x60\x60\x60';
       const params=new URLSearchParams({title:'New node: '+title,body});
       const url='https://github.com/0xF00115h/living-seeds-local/issues/new?'+params.toString();
       wizard.close();
