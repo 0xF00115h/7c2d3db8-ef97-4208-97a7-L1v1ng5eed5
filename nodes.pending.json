@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "nodes": [
+    {
+      "id": "two-coffees-i8",
+      "title": "Two Coffees",
+      "parent": "workshop",
+      "issue": 8
+    }
+  ]
+}

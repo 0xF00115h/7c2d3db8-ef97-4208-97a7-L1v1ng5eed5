@@ -3,15 +3,15 @@
   const AAD = new TextEncoder().encode('living-seeds:bundle:v2');
   const byId = id => document.getElementById(id);
   function start() {
-    const els = Object.fromEntries(['gate','experience','status','key','page','tree-panel','navigation','unlock-form','unlock','lock'].map(id=>[id,byId(id)]));
-    const required=['gate','experience','status','key','page','tree-panel','navigation','unlock-form','unlock','lock'];
+    const els = Object.fromEntries(['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','unlock-form','unlock','lock'].map(id=>[id,byId(id)]));
+    const required=['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','unlock-form','unlock','lock'];
     const absent=required.filter(id=>!els[id]);
     if (absent.length) {
       document.body.textContent='Living Seeds is unable to load: missing '+absent.join(', ');
       return;
     }
     const gate=els.gate, experience=els.experience, status=els.status, input=els.key;
-    const frame=els.page, treePanel=els['tree-panel'], navigation=els.navigation, form=els['unlock-form'];
+    const frame=els.page, treePanel=els['tree-panel'], placeholderPanel=els['placeholder-panel'], navigation=els.navigation, form=els['unlock-form'];
     const unlock=els.unlock, lock=els.lock;
     let pages=[];
     let bundlePromise=fetch('./site.bundle.enc.json',{cache:'no-store'}).then(async r=>{
@@ -105,11 +105,66 @@
         treePanel.appendChild(section);
       }
     }
+    function showPlaceholder(item){
+      erase(placeholderPanel);
+      const title=document.createElement('h1');
+      title.textContent=item.title;
+      placeholderPanel.appendChild(title);
+      const status=document.createElement('p');
+      status.className='node-status';
+      status.textContent='New node · Approved in source · Awaiting an encrypted content release';
+      placeholderPanel.appendChild(status);
+      const intro=document.createElement('p');
+      intro.textContent='This branch of Living Seeds is ready to be developed. The placeholder is published, but its full page has not yet been released.';
+      placeholderPanel.appendChild(intro);
+      const steps=document.createElement('ol');
+      const items=[
+        'Open this node in the private GitHub source repository (sign in as a collaborator).',
+        'Edit pages/'+item.id+'/index.html and style.css in a GitHub branch.',
+        'Open a pull request to discuss and merge the work.',
+        'Ask the root publisher to rebuild and release the encrypted site bundle.'
+      ];
+      for(const label of items){const li=document.createElement('li');li.textContent=label;steps.appendChild(li)}
+      placeholderPanel.appendChild(steps);
+      const source=document.createElement('a');
+      source.href='https://github.com/0xF00115h/living-seeds-local/tree/main/pages/'+encodeURIComponent(item.id);
+      source.target='_blank';source.rel='noopener noreferrer';
+      source.textContent='Open node files in GitHub';
+      placeholderPanel.appendChild(source);
+      if(Number.isSafeInteger(item.issue) && item.issue>0){
+        const issue=document.createElement('a');
+        issue.href='https://github.com/0xF00115h/living-seeds-local/issues/'+item.issue;
+        issue.target='_blank';issue.rel='noopener noreferrer';
+        issue.textContent='Original growth request #'+item.issue;
+        placeholderPanel.appendChild(issue);
+      }
+    }
+    async function includePlaceholders(){
+      try{
+        const response=await fetch('./nodes.pending.json',{cache:'no-store'});
+        if(!response.ok)return;
+        const data=await response.json();
+        if(data.v!==1 || !Array.isArray(data.nodes) || data.nodes.length>1000)return;
+        const ids=new Set(pages.map(p=>p.id));
+        for(const n of data.nodes){
+          if(!n||typeof n.id!=='string'||!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(n.id)||
+             typeof n.title!=='string'||n.title.length<1||n.title.length>100||
+             typeof n.parent!=='string'||!ids.has(n.parent)||
+             !Number.isSafeInteger(n.issue)||n.issue<1||ids.has(n.id))continue;
+          pages.push({id:n.id,title:n.title,parent:n.parent,issue:n.issue,placeholder:true});
+          ids.add(n.id);
+        }
+      }catch(error){console.warn('Placeholder index unavailable:',error)}
+    }
     function display(id){
       const item=pages.find(p=>p.id===id)||pages[0];
       if(!item)throw Error('No pages in the encrypted bundle.');
+      placeholderPanel.hidden=true;
       if(item.id==='tree'){
         frame.hidden=true;frame.removeAttribute('srcdoc');treePanel.hidden=false;renderTree();
+      }else if(item.placeholder){
+        treePanel.hidden=true;frame.hidden=true;frame.removeAttribute('srcdoc');
+        placeholderPanel.hidden=false;showPlaceholder(item);
       }else{
         treePanel.hidden=true;frame.hidden=false;
       const csp='<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; img-src data:; style-src \'unsafe-inline\'; font-src data:; script-src \'none\'; connect-src \'none\'; form-action \'none\'; base-uri \'none\'">';
@@ -134,6 +189,7 @@
         if(data.v!==2||data.type!=='living-seeds-pages'||!Array.isArray(data.pages)||!data.pages.length||
            !data.pages.every(p=>p&&typeof p.id==='string'&&/^[a-z0-9-]+$/.test(p.id)&&typeof p.title==='string'&&typeof p.html==='string'))throw Error('Invalid encrypted website format.');
         pages=data.pages;
+        await includePlaceholders();
         erase(navigation);
         for(const item of pages){
           const button=document.createElement('button');button.type='button';button.dataset.page=item.id;
@@ -147,7 +203,7 @@
       }finally{unlock.disabled=false;}
     });
     lock.addEventListener('click',()=>{
-      wizard.close();growTarget=null;pages=[];frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;erase(treePanel);erase(navigation);experience.hidden=true;gate.hidden=false;input.value='';
+      wizard.close();growTarget=null;pages=[];frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;placeholderPanel.hidden=true;erase(treePanel);erase(placeholderPanel);erase(navigation);experience.hidden=true;gate.hidden=false;input.value='';
       document.title='Living Seeds — Invitation';input.focus();
     });
   }
