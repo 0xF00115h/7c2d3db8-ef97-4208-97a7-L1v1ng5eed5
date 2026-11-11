@@ -235,7 +235,7 @@
       tools.append(searchGroup,hint,reset);treePanel.appendChild(tools);
 
       const board=document.createElement('div');board.className='tree-board';
-      board.setAttribute('aria-label','Top-down node hierarchy');
+      board.setAttribute('role','region');board.setAttribute('aria-label','Top-down node hierarchy');board.tabIndex=0;
       const stage=document.createElement('div');stage.className='tree-stage';
       const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('tree-links');
       svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');
@@ -323,7 +323,7 @@
           const parentCard=branch.querySelector(':scope > .tree-card');
           const group=branch.querySelector(':scope > .tree-level');
           if(!parentCard||!group)continue;
-          const childCards=Array.from(group.children).map(li=>li.querySelector(':scope > .tree-card')).filter(Boolean);
+          const childCards=Array.from(group.children).map(li=>li.querySelector(':scope > .tree-card')||li.querySelector(':scope > .tree-more')).filter(Boolean);
           if(!childCards.length)continue;
           const parentRect=parentCard.getBoundingClientRect();
           const childRects=childCards.map(el=>el.getBoundingClientRect());
@@ -454,7 +454,10 @@
       placeholderPanel.hidden=true;
       if(item.id==='tree'){
         if(treePanel.hidden){
-          for(const node of lineage(lastViewedNode).slice(0,-1))treeExpanded.add(node.id);
+          for(const node of lineage(lastViewedNode).slice(0,-1)){
+            treeExpanded.add(node.id);
+            treeShowAll.add(node.id);
+          }
           treeSelectedId=lastViewedNode;
         }
         frame.hidden=true;frame.removeAttribute('srcdoc');treePanel.hidden=false;renderTree();
