@@ -47,7 +47,7 @@ class Element {
     return matches;
   }
   querySelector(selector) {
-    if (selector.startsWith('input[value=')) return new Element('input');
+    if (selector.startsWith('input[value=') || selector.startsWith('input[name="growth"]') || selector.startsWith('input[name="node-mode"]')) return new Element('input');
     if (selector.startsWith(':scope > .tree-card')) return this.children.find(node => node.className.includes('tree-card')) ?? null;
     if (selector === ':scope > .tree-level') return this.children.find(node => node.className.includes('tree-level')) ?? null;
     if (selector === ':scope > .tree-more') return this.children.find(node => node.className.includes('tree-more')) ?? null;
