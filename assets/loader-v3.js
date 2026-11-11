@@ -83,7 +83,7 @@
         }
         if(!response.ok)throw Error(result.error||'GitHub issue creation failed');
         sessionStorage.removeItem(PENDING_KEY);
-        wizardError.textContent='Created GitHub request #'+result.number+'. The stub will publish automatically.';
+        wizardError.textContent='Created GitHub request #'+result.number+'. '+(payload.mode==='project'?'Your attachment point will appear in The Tree; follow the issue for instructions to seed your repository.':'The node stub will publish automatically.');
         submit.textContent='Created';
         window.setTimeout(()=>{wizard.close();submit.textContent='Create node';},1800);
       }catch(e){
@@ -98,7 +98,8 @@
       wizardTitle.value='';
       wizardDescription.value='';
       wizardError.textContent='';
-      wizard.querySelector('input[value="spawn"]').checked=true;
+      wizard.querySelector('input[name="growth"][value="spawn"]').checked=true;
+      wizard.querySelector('input[name="node-mode"][value="simple"]').checked=true;
       wizardOrigin.textContent='Grow from '+node.title;
       wizard.showModal();
       wizardTitle.focus();
@@ -106,6 +107,7 @@
     byId('wizard-close').addEventListener('click',()=>wizard.close());
     byId('wizard-submit').addEventListener('click',()=>{
       const operation=wizard.querySelector('input[name="growth"]:checked').value;
+      const mode=wizard.querySelector('input[name="node-mode"]:checked').value;
       const title=wizardTitle.value.trim(),description=wizardDescription.value.trim();
       if(!growTarget||title.length<1||description.length<1){
         wizardError.textContent='Name and first idea are required.';return;
@@ -113,7 +115,7 @@
       if(title.length>80||description.length>500){
         wizardError.textContent='Please shorten the request.';return;
       }
-      createNode({operation,target:growTarget,title,description});
+      createNode({operation,target:growTarget,title,description,mode});
     });
 
     function indexHierarchy(){
@@ -404,13 +406,18 @@
       placeholderPanel.appendChild(title);
       const status=document.createElement('p');
       status.className='node-status';
-      status.textContent='New node · Approved in source · Awaiting an encrypted content release';
+      status.textContent=item.mode==='project'?'Project seed · Attachment point registered · Repository approval pending':'New node · Approved in source · Awaiting an encrypted content release';
       placeholderPanel.appendChild(status);
       const intro=document.createElement('p');
-      intro.textContent='This branch of Living Seeds is ready to be developed. The placeholder is published, but its full page has not yet been released.';
+      intro.textContent=item.mode==='project'?'This Tree attachment point is reserved. Create a private GitHub project using the standard Living Seeds seed, then request approval of the repository and commit.':'This branch of Living Seeds is ready to be developed. The placeholder is published, but its full page has not yet been released.';
       placeholderPanel.appendChild(intro);
       const steps=document.createElement('ol');
-      const items=[
+      const items=item.mode==='project' ? [
+        'Open the original GitHub request below for instructions.',
+        'Use GitHub CLI under your own account to create a private repository from the Living Seeds project-seed template.',
+        'Develop independently using the project repository’s issues and pull requests.',
+        'Reply to the original request with the project URL and approved commit SHA for root-owner attachment approval.'
+      ] : [
         'Open this node in the private GitHub source repository (sign in as a collaborator).',
         'Edit pages/'+item.id+'/index.html and style.css in a GitHub branch.',
         'Open a pull request to discuss and merge the work.',
@@ -418,11 +425,13 @@
       ];
       for(const label of items){const li=document.createElement('li');li.textContent=label;steps.appendChild(li)}
       placeholderPanel.appendChild(steps);
-      const source=document.createElement('a');
-      source.href='https://github.com/0xF00115h/living-seeds-local/tree/main/pages/'+encodeURIComponent(item.id);
-      source.target='_blank';source.rel='noopener noreferrer';
-      source.textContent='Open node files in GitHub';
-      placeholderPanel.appendChild(source);
+      if(item.mode!=='project'){
+        const source=document.createElement('a');
+        source.href='https://github.com/0xF00115h/living-seeds-local/tree/main/pages/'+encodeURIComponent(item.id);
+        source.target='_blank';source.rel='noopener noreferrer';
+        source.textContent='Open node files in GitHub';
+        placeholderPanel.appendChild(source);
+      }
       if(Number.isSafeInteger(item.issue) && item.issue>0){
         const issue=document.createElement('a');
         issue.href='https://github.com/0xF00115h/living-seeds-local/issues/'+item.issue;
@@ -443,7 +452,7 @@
              typeof n.title!=='string'||n.title.length<1||n.title.length>100||
              typeof n.parent!=='string'||!ids.has(n.parent)||
              !Number.isSafeInteger(n.issue)||n.issue<1||ids.has(n.id))continue;
-          pages.push({id:n.id,title:n.title,parent:n.parent,issue:n.issue,placeholder:true});
+          pages.push({id:n.id,title:n.title,parent:n.parent,issue:n.issue,mode:n.mode==='project'?'project':'simple',placeholder:true});
           ids.add(n.id);
         }
       }catch(error){console.warn('Placeholder index unavailable:',error)}
