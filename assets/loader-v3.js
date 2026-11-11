@@ -3,7 +3,7 @@
   const AAD = new TextEncoder().encode('living-seeds:bundle:v2');
   const byId = id => document.getElementById(id);
   function start() {
-    const els = Object.fromEntries(['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','unlock-form','unlock','lock'].map(id=>[id,byId(id)]));
+    const els = Object.fromEntries(['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','local-navigation','unlock-form','unlock','lock'].map(id=>[id,byId(id)]));
     const required=['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','unlock-form','unlock','lock'];
     const absent=required.filter(id=>!els[id]);
     if (absent.length) {
@@ -11,9 +11,11 @@
       return;
     }
     const gate=els.gate, experience=els.experience, status=els.status, input=els.key;
-    const frame=els.page, treePanel=els['tree-panel'], placeholderPanel=els['placeholder-panel'], navigation=els.navigation, form=els['unlock-form'];
+    const frame=els.page, treePanel=els['tree-panel'], placeholderPanel=els['placeholder-panel'], navigation=els.navigation, localNavigation=els['local-navigation'], form=els['unlock-form'];
     const unlock=els.unlock, lock=els.lock;
-    let pages=[];
+    let pages=[], pageIndex=new Map(), childIndex=new Map(), lastViewedNode='garden';
+    const treeExpanded=new Set(), treeShowAll=new Set();
+    let treeInitialized=false, treeObserver=null, treeDrawFrame=0;
     let bundlePromise=fetch('./site.bundle.enc.json',{cache:'no-store'}).then(async r=>{
       if(!r.ok) throw Error('Encrypted site unavailable (HTTP '+r.status+').');
       return r.json();
@@ -112,6 +114,79 @@
       }
       createNode({operation,target:growTarget,title,description});
     });
+
+    function indexHierarchy(){
+      pageIndex=new Map(pages.map(p=>[p.id,p]));
+      childIndex=new Map();
+      for(const item of pages){
+        const parent=typeof item.parent==='string' && item.parent!==item.id && pageIndex.has(item.parent) ? item.parent : null;
+        if(!childIndex.has(parent))childIndex.set(parent,[]);
+        childIndex.get(parent).push(item);
+      }
+    }
+    function lineage(id){
+      const result=[], seen=new Set();
+      let item=pageIndex.get(id);
+      while(item && !seen.has(item.id) && result.length<pages.length){
+        seen.add(item.id);result.unshift(item);
+        item=pageIndex.get(item.parent);
+      }
+      return result;
+    }
+    function makeNavLink(item,container,kind,activeId){
+      const button=document.createElement('button');
+      button.type='button';button.dataset.page=item.id;button.className=kind;
+      button.textContent=item.title;
+      button.title=item.title;
+      if(item.id===activeId)button.setAttribute('aria-current','page');
+      button.addEventListener('click',()=>display(item.id));
+      container.appendChild(button);
+    }
+    function renderNavigation(active){
+      erase(navigation);erase(localNavigation);
+      const coreIds=new Set(['garden','tree','log']);
+      for(const id of ['garden','tree','log']){
+        const item=pageIndex.get(id);
+        if(item)makeNavLink(item,navigation,'nav-core-link',active.id);
+      }
+      const context=active.id==='tree' ? pageIndex.get(lastViewedNode) || pageIndex.get('garden') : active;
+      if(!context)return;
+      const label=document.createElement('span');label.className='nav-context-label';label.textContent='LOCAL';
+      localNavigation.appendChild(label);
+      const path=lineage(context.id).filter(p=>!coreIds.has(p.id));
+      if(path.length){
+        const crumbs=path.length>4 ? [path[0],null,...path.slice(-2)] : path;
+        crumbs.forEach((item,i)=>{
+          if(i){
+            const slash=document.createElement('span');slash.className='nav-crumb-sep';slash.textContent='/';
+            slash.setAttribute('aria-hidden','true');localNavigation.appendChild(slash);
+          }
+          if(item)makeNavLink(item,localNavigation,'nav-crumb',active.id);
+          else {
+            const more=document.createElement('button');more.type='button';more.className='nav-more';
+            more.textContent='…';more.title='Explore the entire branch in The Tree';
+            more.setAttribute('aria-label','Explore hidden ancestors in The Tree');
+            more.addEventListener('click',()=>display('tree'));localNavigation.appendChild(more);
+          }
+        });
+      }else{
+        const near=(childIndex.get('garden')||[]).filter(p=>!coreIds.has(p.id));
+        near.slice(0,4).forEach(p=>makeNavLink(p,localNavigation,'nav-nearby',active.id));
+      }
+      if(active.id==='tree')return;
+      const next=(childIndex.get(active.id)||[]);
+      if(next.length){
+        const divider=document.createElement('span');divider.className='nav-local-divider';divider.setAttribute('aria-hidden','true');
+        localNavigation.appendChild(divider);
+        next.slice(0,3).forEach(p=>makeNavLink(p,localNavigation,'nav-nearby',active.id));
+        if(next.length>3){
+          const more=document.createElement('button');more.type='button';more.className='nav-more';
+          more.textContent='+'+(next.length-3);more.title='See all descendants in The Tree';
+          more.addEventListener('click',()=>display('tree'));localNavigation.appendChild(more);
+        }
+      }
+    }
+
     function renderTree(){
       erase(treePanel);
       const heading=document.createElement('h1');heading.textContent='The Tree';treePanel.appendChild(heading);
@@ -223,7 +298,8 @@
       const markup=/<head(?:\s[^>]*)?>/i.test(item.html)?item.html.replace(/<head(?:\s[^>]*)?>/i,match=>match+csp):'<!doctype html><html><head>'+csp+'</head><body>'+item.html+'</body></html>';
       frame.srcdoc=markup;
       }
-      for(const button of navigation.querySelectorAll('button[data-page]'))button.setAttribute('aria-current',button.dataset.page===item.id?'page':'false');
+      if(item.id!=='tree')lastViewedNode=item.id;
+      renderNavigation(item);
       document.title=item.title+' — Living Seeds';
     }
     form.addEventListener('submit',async event=>{
@@ -242,11 +318,7 @@
            !data.pages.every(p=>p&&typeof p.id==='string'&&/^[a-z0-9-]+$/.test(p.id)&&typeof p.title==='string'&&typeof p.html==='string'))throw Error('Invalid encrypted website format.');
         pages=data.pages;
         await includePlaceholders();
-        erase(navigation);
-        for(const item of pages){
-          const button=document.createElement('button');button.type='button';button.dataset.page=item.id;
-          button.textContent=item.title;button.addEventListener('click',()=>display(item.id));navigation.appendChild(button);
-        }
+        indexHierarchy();
         display(data.home);
         try{
           const pending=sessionStorage.getItem(PENDING_KEY);
@@ -271,7 +343,7 @@
       }finally{unlock.disabled=false;}
     });
     lock.addEventListener('click',()=>{
-      wizard.close();growTarget=null;pages=[];frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;placeholderPanel.hidden=true;erase(treePanel);erase(placeholderPanel);erase(navigation);experience.hidden=true;gate.hidden=false;input.value='';
+      wizard.close();growTarget=null;pages=[];frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;placeholderPanel.hidden=true;erase(treePanel);erase(placeholderPanel);erase(navigation);erase(localNavigation);pageIndex.clear();childIndex.clear();treeExpanded.clear();treeShowAll.clear();treeInitialized=false;experience.hidden=true;gate.hidden=false;input.value='';
       document.title='Living Seeds — Invitation';input.focus();
     });
   }
