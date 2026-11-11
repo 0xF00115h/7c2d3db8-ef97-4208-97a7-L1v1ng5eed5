@@ -42,6 +42,12 @@
       "title": "test 5",
       "parent": "test-4-i17",
       "issue": 18
+    },
+    {
+      "id": "sib1-i19",
+      "title": "sib1",
+      "parent": "workshop",
+      "issue": 19
     }
   ]
 }
