@@ -47,7 +47,8 @@
       return data.baseUrl;
     }).catch(()=>null);
     const issueUrl=payload=>{
-      const body='<!-- living-seeds-node-request:v1 -->\n'+'\x60\x60\x60json\n'+JSON.stringify(payload)+'\n\x60\x60\x60';
+      const body='<!-- living-seeds-node-request:v1 -->\n'+'\x60\x60\x60json\n'+JSON.stringify(payload)+'\n\x60\x60\x60'+
+        '\n\n**Node finalisation is in progress.**\n\nRefresh this issue shortly to see the first automated comment with next steps.';
       return 'https://github.com/0xF00115h/living-seeds-local/issues/new?'+
         new URLSearchParams({title:'New node: '+payload.title,body}).toString();
     };
