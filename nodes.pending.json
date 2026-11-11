@@ -48,6 +48,13 @@
       "title": "sib1",
       "parent": "workshop",
       "issue": 19
+    },
+    {
+      "id": "my-project-i21",
+      "title": "My Project",
+      "parent": "workshop",
+      "issue": 21,
+      "mode": "project"
     }
   ]
 }
