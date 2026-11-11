@@ -55,6 +55,13 @@
       "parent": "workshop",
       "issue": 21,
       "mode": "project"
+    },
+    {
+      "id": "seed2-i23",
+      "title": "seed2",
+      "parent": "my-project-i21",
+      "issue": 23,
+      "mode": "project"
     }
   ]
 }
