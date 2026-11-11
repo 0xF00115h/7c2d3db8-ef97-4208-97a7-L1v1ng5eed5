@@ -3,7 +3,7 @@
   const AAD = new TextEncoder().encode('living-seeds:bundle:v2');
   const byId = id => document.getElementById(id);
   function start() {
-    const els = Object.fromEntries(['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','unlock-form','unlock','lock'].map(id=>[id,byId(id)]));
+    const els = Object.fromEntries(['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','local-navigation','unlock-form','unlock','lock'].map(id=>[id,byId(id)]));
     const required=['gate','experience','status','key','page','tree-panel','placeholder-panel','navigation','unlock-form','unlock','lock'];
     const absent=required.filter(id=>!els[id]);
     if (absent.length) {
@@ -11,9 +11,12 @@
       return;
     }
     const gate=els.gate, experience=els.experience, status=els.status, input=els.key;
-    const frame=els.page, treePanel=els['tree-panel'], placeholderPanel=els['placeholder-panel'], navigation=els.navigation, form=els['unlock-form'];
+    const frame=els.page, treePanel=els['tree-panel'], placeholderPanel=els['placeholder-panel'], navigation=els.navigation, localNavigation=els['local-navigation'], form=els['unlock-form'];
     const unlock=els.unlock, lock=els.lock;
-    let pages=[];
+    let pages=[], pageIndex=new Map(), childIndex=new Map(), lastViewedNode='garden';
+    const treeExpanded=new Set(), treeShowAll=new Set();
+    let treeSelectedId='garden';
+    let treeInitialized=false, treeObserver=null, treeDrawFrame=0;
     let bundlePromise=fetch('./site.bundle.enc.json',{cache:'no-store'}).then(async r=>{
       if(!r.ok) throw Error('Encrypted site unavailable (HTTP '+r.status+').');
       return r.json();
@@ -112,50 +115,287 @@
       }
       createNode({operation,target:growTarget,title,description});
     });
-    function renderTree(){
-      erase(treePanel);
-      const heading=document.createElement('h1');heading.textContent='The Tree';treePanel.appendChild(heading);
-      const intro=document.createElement('p');intro.textContent='A growing network of linked site nodes. Select a name to visit.';treePanel.appendChild(intro);
-      const ids=new Set(pages.map(p=>p.id)), children=new Map(), visited=new Set();
-      for(const p of pages){
-        const parent=typeof p.parent==='string' && ids.has(p.parent) && p.parent!==p.id ? p.parent : null;
-        if(!children.has(parent))children.set(parent,[]);
-        children.get(parent).push(p);
+
+    function indexHierarchy(){
+      pageIndex=new Map(pages.map(p=>[p.id,p]));
+      childIndex=new Map();
+      for(const item of pages){
+        const parent=typeof item.parent==='string' && item.parent!==item.id && pageIndex.has(item.parent) ? item.parent : null;
+        if(!childIndex.has(parent))childIndex.set(parent,[]);
+        childIndex.get(parent).push(item);
       }
-      function populate(parent,depth,container){
-        const list=document.createElement('ul');list.className='tree-branches';
-        for(const p of children.get(parent)||[]){
-          if(visited.has(p.id))continue;
-          visited.add(p.id);
-          const li=document.createElement('li'),nodeRow=document.createElement('div');
-          nodeRow.className='tree-node';
-          const btn=document.createElement('button');
-          btn.type='button';btn.textContent=p.title;btn.addEventListener('click',()=>display(p.id));nodeRow.appendChild(btn);
-          const add=document.createElement('button');
-          add.type='button';add.className='tree-add';add.textContent='+';
-          add.setAttribute('aria-label','Add node from '+p.title);
-          add.title='Spawn or sibling from '+p.title;
-          add.addEventListener('click',()=>openWizard(p.id));
-          nodeRow.appendChild(add);li.appendChild(nodeRow);
-          if(depth<pages.length)populate(p.id,depth+1,li);
-          list.appendChild(li);
+    }
+    function lineage(id){
+      const result=[], seen=new Set();
+      let item=pageIndex.get(id);
+      while(item && !seen.has(item.id) && result.length<pages.length){
+        seen.add(item.id);result.unshift(item);
+        item=pageIndex.get(item.parent);
+      }
+      return result;
+    }
+    function makeNavLink(item,container,kind,activeId){
+      const button=document.createElement('button');
+      button.type='button';button.dataset.page=item.id;button.className=kind;
+      button.textContent=item.title;
+      button.title=item.title;
+      if(item.id===activeId)button.setAttribute('aria-current','page');
+      button.addEventListener('click',()=>display(item.id));
+      container.appendChild(button);
+    }
+    function renderNavigation(active){
+      erase(navigation);erase(localNavigation);
+      const coreIds=new Set(['garden','tree','log']);
+      for(const id of ['garden','tree','log']){
+        const item=pageIndex.get(id);
+        if(item)makeNavLink(item,navigation,'nav-core-link',active.id);
+      }
+      const context=active.id==='tree' ? pageIndex.get(lastViewedNode) || pageIndex.get('garden') : active;
+      if(!context)return;
+      const label=document.createElement('span');label.className='nav-context-label';label.textContent='LOCAL';
+      localNavigation.appendChild(label);
+      const path=lineage(context.id).filter(p=>!coreIds.has(p.id));
+      if(path.length){
+        const crumbs=path.length>4 ? [path[0],null,...path.slice(-2)] : path;
+        crumbs.forEach((item,i)=>{
+          if(i){
+            const slash=document.createElement('span');slash.className='nav-crumb-sep';slash.textContent='/';
+            slash.setAttribute('aria-hidden','true');localNavigation.appendChild(slash);
+          }
+          if(item)makeNavLink(item,localNavigation,'nav-crumb',active.id);
+          else {
+            const more=document.createElement('button');more.type='button';more.className='nav-more';
+            more.textContent='…';more.title='Explore the entire branch in The Tree';
+            more.setAttribute('aria-label','Explore hidden ancestors in The Tree');
+            more.addEventListener('click',()=>display('tree'));localNavigation.appendChild(more);
+          }
+        });
+      }else{
+        const near=(childIndex.get('garden')||[]).filter(p=>!coreIds.has(p.id));
+        near.slice(0,4).forEach(p=>makeNavLink(p,localNavigation,'nav-nearby',active.id));
+      }
+      if(active.id==='tree')return;
+      const next=(childIndex.get(active.id)||[]);
+      if(next.length){
+        const divider=document.createElement('span');divider.className='nav-local-divider';divider.setAttribute('aria-hidden','true');
+        localNavigation.appendChild(divider);
+        next.slice(0,3).forEach(p=>makeNavLink(p,localNavigation,'nav-nearby',active.id));
+        if(next.length>3){
+          const more=document.createElement('button');more.type='button';more.className='nav-more';
+          more.textContent='+'+(next.length-3);more.title='See all descendants in The Tree';
+          more.addEventListener('click',()=>display('tree'));localNavigation.appendChild(more);
         }
-        if(list.childElementCount)container.appendChild(list);
       }
-      populate(null,0,treePanel);
-      const missing=pages.filter(p=>!visited.has(p.id));
-      if(missing.length){
-        const section=document.createElement('div');section.className='tree-unplaced';
-        const h=document.createElement('h2');h.textContent='Other nodes';section.appendChild(h);
-        for(const p of missing){
-          const btn=document.createElement('button');btn.type='button';btn.textContent=p.title;
-          btn.addEventListener('click',()=>display(p.id));section.appendChild(btn);
-          const add=document.createElement('button');add.type='button';add.className='tree-add';
-          add.textContent='+';add.setAttribute('aria-label','Add node from '+p.title);
-          add.addEventListener('click',()=>openWizard(p.id));section.appendChild(add);
+    }
+
+    function renderTree(){
+      if(treeObserver){treeObserver.disconnect();treeObserver=null;}
+      if(treeDrawFrame){cancelAnimationFrame(treeDrawFrame);treeDrawFrame=0;}
+      erase(treePanel);
+      const roots=childIndex.get(null)||[];
+      if(!treeInitialized){
+        treeInitialized=true;
+        for(const root of roots){
+          treeExpanded.add(root.id);
+          for(const child of childIndex.get(root.id)||[]){
+            if((childIndex.get(child.id)||[]).length)treeExpanded.add(child.id);
+          }
+        }
+      }
+      const reachable=new Set();
+      function markReachable(node){
+        if(reachable.has(node.id))return;
+        reachable.add(node.id);
+        for(const child of childIndex.get(node.id)||[])markReachable(child);
+      }
+      for(const root of roots)markReachable(root);
+
+      const top=document.createElement('div');top.className='tree-top';
+      const identity=document.createElement('div');identity.className='tree-identity';
+      const eyebrow=document.createElement('p');eyebrow.className='tree-eyebrow';eyebrow.textContent='Living knowledge / Structure';
+      const heading=document.createElement('h1');heading.textContent='The Tree';
+      const intro=document.createElement('p');intro.className='tree-intro';
+      intro.textContent='A map of ideas and their relationships. Open a node to read it, or grow its branch.';
+      identity.append(eyebrow,heading,intro);
+      const count=document.createElement('p');count.className='tree-count';
+      const pending=pages.filter(p=>p.placeholder).length;
+      count.textContent=pages.length+' nodes'+(pending?' · '+pending+' awaiting release':'');
+      top.append(identity,count);treePanel.appendChild(top);
+
+      const tools=document.createElement('div');tools.className='tree-toolbar';
+      const searchGroup=document.createElement('div');searchGroup.className='tree-search-group';
+      const search=document.createElement('input');search.type='search';search.className='tree-search';
+      search.placeholder='Find a node';search.setAttribute('aria-label','Find a node in The Tree');
+      search.autocomplete='off';
+      const suggestions=document.createElement('div');suggestions.className='tree-search-results';
+      suggestions.hidden=true;
+      searchGroup.append(search,suggestions);
+      const hint=document.createElement('span');hint.className='tree-hint';hint.textContent='Select a title to open · Use arrows to expand branches';
+      const reset=document.createElement('button');reset.type='button';reset.className='tree-reset';reset.textContent='Reset view';
+      tools.append(searchGroup,hint,reset);treePanel.appendChild(tools);
+
+      const board=document.createElement('div');board.className='tree-board';
+      board.setAttribute('role','region');board.setAttribute('aria-label','Top-down node hierarchy');board.tabIndex=0;
+      const stage=document.createElement('div');stage.className='tree-stage';
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.classList.add('tree-links');
+      svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');
+      stage.appendChild(svg);
+      const forest=document.createElement('ul');forest.className='tree-level tree-roots';
+      forest.setAttribute('aria-label','Root nodes');
+      stage.appendChild(forest);board.appendChild(stage);treePanel.appendChild(board);
+
+      const shown=new Set();
+      const childLimit=7;
+      function renderBranch(node,depth){
+        if(shown.has(node.id))return null;
+        shown.add(node.id);
+        const branch=document.createElement('li');branch.className='tree-branch';branch.dataset.node=node.id;
+        const card=document.createElement('div');card.className='tree-card';
+        if(node.id===treeSelectedId)card.classList.add('is-selected');
+        const open=document.createElement('button');open.type='button';open.className='tree-open';
+        open.title='Open '+node.title;open.setAttribute('aria-label','Open '+node.title);
+        const title=document.createElement('span');title.className='tree-node-title';title.textContent=node.title;
+        const meta=document.createElement('span');meta.className='tree-node-meta';
+        const children=childIndex.get(node.id)||[];
+        meta.textContent=node.placeholder?'Awaiting release':children.length?(children.length+' '+(children.length===1?'child':'children')):'Published node';
+        open.append(title,meta);open.addEventListener('click',()=>display(node.id));
+        card.appendChild(open);
+        const controls=document.createElement('div');controls.className='tree-node-controls';
+        if(children.length){
+          const toggle=document.createElement('button');toggle.type='button';toggle.className='tree-toggle';
+          const expanded=treeExpanded.has(node.id);
+          toggle.textContent=expanded?'−':'›';
+          toggle.title=(expanded?'Collapse ':'Expand ')+node.title;
+          toggle.setAttribute('aria-label',(expanded?'Collapse ':'Expand ')+node.title+' descendants');
+          toggle.setAttribute('aria-expanded',String(expanded));
+          toggle.addEventListener('click',()=>{
+            if(treeExpanded.has(node.id))treeExpanded.delete(node.id);else treeExpanded.add(node.id);
+            renderTree();
+            const target=Array.from(treePanel.querySelectorAll('.tree-branch')).find(el=>el.dataset.node===node.id);
+            const focus=target&&target.querySelector(':scope > .tree-card .tree-toggle');
+            if(focus)focus.focus({preventScroll:true});
+          });
+          controls.appendChild(toggle);
+        }
+        const add=document.createElement('button');add.type='button';add.className='tree-add';add.textContent='+';
+        add.setAttribute('aria-label','Add node from '+node.title);add.title='Spawn or sibling from '+node.title;
+        add.addEventListener('click',()=>openWizard(node.id));controls.appendChild(add);
+        card.appendChild(controls);branch.appendChild(card);
+
+        if(children.length && treeExpanded.has(node.id) && depth<100){
+          const group=document.createElement('ul');group.className='tree-level';
+          const visible=treeShowAll.has(node.id)?children:children.slice(0,childLimit);
+          for(const child of visible){const childBranch=renderBranch(child,depth+1);if(childBranch)group.appendChild(childBranch);}
+          if(children.length>visible.length){
+            const extra=document.createElement('li');extra.className='tree-branch tree-extra';
+            const more=document.createElement('button');more.type='button';more.className='tree-more';
+            more.textContent='+'+(children.length-visible.length)+' more';
+            more.setAttribute('aria-label','Show all '+children.length+' children of '+node.title);
+            more.addEventListener('click',()=>{treeShowAll.add(node.id);renderTree();});
+            extra.appendChild(more);group.appendChild(extra);
+          }
+          if(group.childElementCount)branch.appendChild(group);
+        }
+        return branch;
+      }
+      for(const root of roots){const branch=renderBranch(root,0);if(branch)forest.appendChild(branch);}
+
+      const unplaced=pages.filter(p=>!reachable.has(p.id));
+      if(unplaced.length){
+        const section=document.createElement('section');section.className='tree-unplaced';
+        const label=document.createElement('h2');label.textContent='Nodes needing placement';section.appendChild(label);
+        const desc=document.createElement('p');desc.textContent='These nodes have an incomplete or cyclic parent relationship.';
+        section.appendChild(desc);
+        for(const item of unplaced){
+          const open=document.createElement('button');open.type='button';open.textContent=item.title;
+          open.addEventListener('click',()=>display(item.id));section.appendChild(open);
         }
         treePanel.appendChild(section);
       }
+
+      function drawLinks(){
+        if(treePanel.hidden || !stage.isConnected)return;
+        const frame=stage.getBoundingClientRect();
+        const parts=[];
+        function centerX(rect){return rect.left-frame.left+rect.width/2;}
+        const branches=stage.querySelectorAll('.tree-branch[data-node]');
+        for(const branch of branches){
+          const parentCard=branch.querySelector(':scope > .tree-card');
+          const group=branch.querySelector(':scope > .tree-level');
+          if(!parentCard||!group)continue;
+          const childCards=Array.from(group.children).map(li=>li.querySelector(':scope > .tree-card')||li.querySelector(':scope > .tree-more')).filter(Boolean);
+          if(!childCards.length)continue;
+          const parentRect=parentCard.getBoundingClientRect();
+          const childRects=childCards.map(el=>el.getBoundingClientRect());
+          const x=centerX(parentRect), y=parentRect.bottom-frame.top;
+          const targetY=Math.min(...childRects.map(r=>r.top-frame.top));
+          const railY=y+(targetY-y)*.52;
+          parts.push('M'+x+' '+y+' V'+railY);
+          const xs=childRects.map(centerX);
+          if(xs.length>1)parts.push('M'+Math.min(...xs)+' '+railY+' H'+Math.max(...xs));
+          for(const rect of childRects){
+            const cx=centerX(rect),cy=rect.top-frame.top;
+            parts.push('M'+(xs.length===1?x:cx)+' '+railY+(xs.length===1?' H'+cx:'')+' V'+cy);
+          }
+        }
+        svg.setAttribute('viewBox','0 0 '+stage.clientWidth+' '+stage.clientHeight);
+        svg.setAttribute('preserveAspectRatio','none');
+        svg.replaceChildren();
+        if(parts.length){
+          const links=document.createElementNS('http://www.w3.org/2000/svg','path');
+          links.setAttribute('d',parts.join(' '));links.setAttribute('fill','none');
+          links.setAttribute('stroke','currentColor');links.setAttribute('stroke-width','1.25');
+          links.setAttribute('vector-effect','non-scaling-stroke');svg.appendChild(links);
+        }
+      }
+      treeDrawFrame=requestAnimationFrame(()=>{treeDrawFrame=0;drawLinks();});
+      if(typeof ResizeObserver!=='undefined'){
+        treeObserver=new ResizeObserver(()=>{if(treeDrawFrame)cancelAnimationFrame(treeDrawFrame);treeDrawFrame=requestAnimationFrame(()=>{treeDrawFrame=0;drawLinks();});});
+        treeObserver.observe(stage);
+      }
+
+      function revealNode(id){
+        const path=lineage(id);
+        for(const ancestor of path.slice(0,-1)){
+          treeExpanded.add(ancestor.id);
+          treeShowAll.add(ancestor.id);
+        }
+        treeSelectedId=id;
+        renderTree();
+        requestAnimationFrame(()=>{
+          const target=Array.from(treePanel.querySelectorAll('.tree-branch[data-node]')).find(el=>el.dataset.node===id);
+          if(target)target.querySelector('.tree-card').scrollIntoView({block:'center',inline:'center',behavior:'auto'});
+        });
+      }
+      function resultsFor(query){
+        const term=query.trim().toLocaleLowerCase();
+        return term?pages.filter(p=>(p.title+' '+p.id).toLocaleLowerCase().includes(term)).slice(0,8):[];
+      }
+      function updateSearch(){
+        erase(suggestions);
+        const hits=resultsFor(search.value);
+        suggestions.hidden=!search.value.trim();
+        if(!search.value.trim())return;
+        if(!hits.length){
+          const empty=document.createElement('p');empty.textContent='No matching nodes';suggestions.appendChild(empty);return;
+        }
+        for(const item of hits){
+          const button=document.createElement('button');button.type='button';button.className='tree-result';
+          button.textContent=item.title;
+          button.title=lineage(item.id).map(p=>p.title).join(' / ');
+          button.addEventListener('click',()=>revealNode(item.id));suggestions.appendChild(button);
+        }
+      }
+      search.addEventListener('input',updateSearch);
+      search.addEventListener('keydown',event=>{
+        if(event.key==='Escape'){search.value='';updateSearch();}
+        if(event.key==='Enter'){
+          const hit=resultsFor(search.value)[0];if(hit){event.preventDefault();revealNode(hit.id);}
+        }
+      });
+      reset.addEventListener('click',()=>{
+        treeExpanded.clear();treeShowAll.clear();treeInitialized=false;treeSelectedId='garden';renderTree();
+      });
     }
     function showPlaceholder(item){
       erase(placeholderPanel);
@@ -213,6 +453,13 @@
       if(!item)throw Error('No pages in the encrypted bundle.');
       placeholderPanel.hidden=true;
       if(item.id==='tree'){
+        if(treePanel.hidden){
+          for(const node of lineage(lastViewedNode).slice(0,-1)){
+            treeExpanded.add(node.id);
+            treeShowAll.add(node.id);
+          }
+          treeSelectedId=lastViewedNode;
+        }
         frame.hidden=true;frame.removeAttribute('srcdoc');treePanel.hidden=false;renderTree();
       }else if(item.placeholder){
         treePanel.hidden=true;frame.hidden=true;frame.removeAttribute('srcdoc');
@@ -223,7 +470,8 @@
       const markup=/<head(?:\s[^>]*)?>/i.test(item.html)?item.html.replace(/<head(?:\s[^>]*)?>/i,match=>match+csp):'<!doctype html><html><head>'+csp+'</head><body>'+item.html+'</body></html>';
       frame.srcdoc=markup;
       }
-      for(const button of navigation.querySelectorAll('button[data-page]'))button.setAttribute('aria-current',button.dataset.page===item.id?'page':'false');
+      if(item.id!=='tree')lastViewedNode=item.id;
+      renderNavigation(item);
       document.title=item.title+' — Living Seeds';
     }
     form.addEventListener('submit',async event=>{
@@ -242,11 +490,7 @@
            !data.pages.every(p=>p&&typeof p.id==='string'&&/^[a-z0-9-]+$/.test(p.id)&&typeof p.title==='string'&&typeof p.html==='string'))throw Error('Invalid encrypted website format.');
         pages=data.pages;
         await includePlaceholders();
-        erase(navigation);
-        for(const item of pages){
-          const button=document.createElement('button');button.type='button';button.dataset.page=item.id;
-          button.textContent=item.title;button.addEventListener('click',()=>display(item.id));navigation.appendChild(button);
-        }
+        indexHierarchy();
         display(data.home);
         try{
           const pending=sessionStorage.getItem(PENDING_KEY);
@@ -271,7 +515,7 @@
       }finally{unlock.disabled=false;}
     });
     lock.addEventListener('click',()=>{
-      wizard.close();growTarget=null;pages=[];frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;placeholderPanel.hidden=true;erase(treePanel);erase(placeholderPanel);erase(navigation);experience.hidden=true;gate.hidden=false;input.value='';
+      wizard.close();growTarget=null;pages=[];if(treeObserver){treeObserver.disconnect();treeObserver=null;}if(treeDrawFrame){cancelAnimationFrame(treeDrawFrame);treeDrawFrame=0;}frame.removeAttribute('srcdoc');frame.hidden=false;treePanel.hidden=true;placeholderPanel.hidden=true;erase(treePanel);erase(placeholderPanel);erase(navigation);erase(localNavigation);pageIndex.clear();childIndex.clear();treeExpanded.clear();treeShowAll.clear();treeInitialized=false;experience.hidden=true;gate.hidden=false;input.value='';
       document.title='Living Seeds — Invitation';input.focus();
     });
   }
