@@ -112,13 +112,13 @@
     function updateSimpleDestination(){
       const destination=simpleDestination();
       const control=wizard.querySelector('input[name="node-mode"][value="simple"]');
-      const label=control.closest('label');
-      label.lastChild.textContent=' Simple node — page in '+destination.label;
+      const label=control.closest?.('label');
+      if(label?.lastChild)label.lastChild.textContent=' Simple node — page in '+destination.label;
       control.disabled=destination.blocked;
       if(destination.blocked && control.checked)
         wizard.querySelector('input[name="node-mode"][value="project"]').checked=true;
       const help=wizard.querySelector('.wizard-help');
-      help.textContent=destination.blocked
+      if(help)help.textContent=destination.blocked
         ? 'This project has no approved repository yet. Attach it before adding pages inside it, or seed an independent project.'
         : 'Simple nodes add a page in '+destination.label+'. Seed GitHub project creates an independent repository, subject to attachment approval.';
     }
