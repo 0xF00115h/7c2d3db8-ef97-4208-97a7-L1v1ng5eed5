@@ -91,6 +91,39 @@
       }finally{submit.disabled=false;}
     }
 
+    function simpleDestination(){
+      const target=pages.find(p=>p.id===growTarget);
+      if(!target)return {label:'Living Seeds',blocked:false};
+      const operation=wizard.querySelector('input[name="growth"]:checked').value;
+      const parent=operation==='spawn'?target:pages.find(p=>p.id===target.parent);
+      if(!parent)return {label:'Living Seeds',blocked:false};
+      const ancestors=new Set();
+      let current=parent;
+      while(current && !ancestors.has(current.id)){
+        ancestors.add(current.id);
+        if(current.projectRoot && current.projectRepository)
+          return {label:current.projectRepository,blocked:false};
+        if(current.mode==='project' && !current.projectRepository)
+          return {label:'project awaiting attachment',blocked:true};
+        current=pages.find(p=>p.id===current.parent);
+      }
+      return {label:'Living Seeds',blocked:false};
+    }
+    function updateSimpleDestination(){
+      const destination=simpleDestination();
+      const control=wizard.querySelector('input[name="node-mode"][value="simple"]');
+      const label=control.closest('label');
+      label.lastChild.textContent=' Simple node — page in '+destination.label;
+      control.disabled=destination.blocked;
+      if(destination.blocked && control.checked)
+        wizard.querySelector('input[name="node-mode"][value="project"]').checked=true;
+      const help=wizard.querySelector('.wizard-help');
+      help.textContent=destination.blocked
+        ? 'This project has no approved repository yet. Attach it before adding pages inside it, or seed an independent project.'
+        : 'Simple nodes add a page in '+destination.label+'. Seed GitHub project creates an independent repository, subject to attachment approval.';
+    }
+    wizard.querySelectorAll('input[name="growth"]').forEach(control=>control.addEventListener('change',updateSimpleDestination));
+
     function openWizard(id){
       const node=pages.find(p=>p.id===id);
       if(!node)return;
@@ -101,6 +134,7 @@
       wizard.querySelector('input[name="growth"][value="spawn"]').checked=true;
       wizard.querySelector('input[name="node-mode"][value="simple"]').checked=true;
       wizardOrigin.textContent='Grow from '+node.title;
+      updateSimpleDestination();
       wizard.showModal();
       wizardTitle.focus();
     }
@@ -452,7 +486,7 @@
              typeof n.title!=='string'||n.title.length<1||n.title.length>100||
              typeof n.parent!=='string'||!ids.has(n.parent)||
              !Number.isSafeInteger(n.issue)||n.issue<1||ids.has(n.id))continue;
-          pages.push({id:n.id,title:n.title,parent:n.parent,issue:n.issue,mode:n.mode==='project'?'project':'simple',placeholder:true});
+          pages.push({id:n.id,title:n.title,parent:n.parent,issue:n.issue,mode:n.mode==='project'?'project':(n.mode==='bud'?'bud':'simple'),placeholder:true});
           ids.add(n.id);
         }
       }catch(error){console.warn('Placeholder index unavailable:',error)}
