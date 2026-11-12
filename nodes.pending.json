@@ -90,6 +90,13 @@
       "parent": "test1-i13",
       "issue": 31,
       "mode": "project"
+    },
+    {
+      "id": "projspawn-i33",
+      "title": "projspawn",
+      "parent": "test1x2seed-i31",
+      "issue": 33,
+      "mode": "bud"
     }
   ]
 }
