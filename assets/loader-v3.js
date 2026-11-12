@@ -440,10 +440,10 @@
       placeholderPanel.appendChild(title);
       const status=document.createElement('p');
       status.className='node-status';
-      status.textContent=item.mode==='project'?'Project seed · Attachment point registered · Repository approval pending':'New node · Approved in source · Awaiting an encrypted content release';
+      status.textContent=item.mode==='project'?'Project seed · Attachment point registered · Repository approval pending':(item.mode==='bud'?'Project bud · Awaiting project-owner contribution and publication':'New node · Approved in source · Awaiting an encrypted content release');
       placeholderPanel.appendChild(status);
       const intro=document.createElement('p');
-      intro.textContent=item.mode==='project'?'This Tree attachment point is reserved. Create a private GitHub project using the standard Living Seeds seed, then request approval of the repository and commit.':'This branch of Living Seeds is ready to be developed. The placeholder is published, but its full page has not yet been released.';
+      intro.textContent=item.mode==='project'?'This Tree attachment point is reserved. Create a private GitHub project using the standard Living Seeds seed, then request approval of the repository and commit.':(item.mode==='bud'?'This page belongs to the existing independent project repository. Follow the original GitHub request to propose its content; no new repository is needed.':'This branch of Living Seeds is ready to be developed. The placeholder is published, but its full page has not yet been released.');
       placeholderPanel.appendChild(intro);
       const steps=document.createElement('ol');
       const items=item.mode==='project' ? [
@@ -451,6 +451,11 @@
         'Use GitHub CLI under your own account to create a private repository from the Living Seeds project-seed template.',
         'Develop independently using the project repository’s issues and pull requests.',
         'Reply to the original request with the project URL and approved commit SHA for root-owner attachment approval.'
+      ] : item.mode==='bud' ? [
+        'Open the original GitHub request below for the prepared project-bud command.',
+        'Contribute the new page to the existing project repository, using its own issues and pull requests.',
+        'The project owner merges the contribution, and the root owner approves the pinned revision.',
+        'Living Seeds publishes the approved project bud inside the encrypted Tree.'
       ] : [
         'Open this node in the private GitHub source repository (sign in as a collaborator).',
         'Edit pages/'+item.id+'/index.html and style.css in a GitHub branch.',
@@ -459,7 +464,7 @@
       ];
       for(const label of items){const li=document.createElement('li');li.textContent=label;steps.appendChild(li)}
       placeholderPanel.appendChild(steps);
-      if(item.mode!=='project'){
+      if(item.mode!=='project' && item.mode!=='bud'){
         const source=document.createElement('a');
         source.href='https://github.com/0xF00115h/living-seeds-local/tree/main/pages/'+encodeURIComponent(item.id);
         source.target='_blank';source.rel='noopener noreferrer';
