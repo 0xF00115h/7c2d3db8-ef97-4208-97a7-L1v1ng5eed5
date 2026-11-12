@@ -69,6 +69,13 @@
       "parent": "my-project-i21",
       "issue": 24,
       "mode": "project"
+    },
+    {
+      "id": "seed-4-i26",
+      "title": "seed 4",
+      "parent": "workshop",
+      "issue": 26,
+      "mode": "project"
     }
   ]
 }
