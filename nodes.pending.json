@@ -83,6 +83,13 @@
       "parent": "my-project-i21",
       "issue": 28,
       "mode": "project"
+    },
+    {
+      "id": "test1x2seed-i31",
+      "title": "test1x2seed",
+      "parent": "test1-i13",
+      "issue": 31,
+      "mode": "project"
     }
   ]
 }
