@@ -180,48 +180,13 @@
       container.appendChild(button);
     }
     function renderNavigation(active){
-      erase(navigation);erase(localNavigation);
-      const coreIds=new Set(['garden','tree','log']);
-      for(const id of ['garden','tree','log']){
-        const item=pageIndex.get(id);
-        if(item)makeNavLink(item,navigation,'nav-core-link',active.id);
-      }
-      const context=active.id==='tree' ? pageIndex.get(lastViewedNode) || pageIndex.get('garden') : active;
-      if(!context)return;
-      const label=document.createElement('span');label.className='nav-context-label';label.textContent='LOCAL';
-      localNavigation.appendChild(label);
-      const path=lineage(context.id).filter(p=>!coreIds.has(p.id));
-      if(path.length){
-        const crumbs=path.length>4 ? [path[0],null,...path.slice(-2)] : path;
-        crumbs.forEach((item,i)=>{
-          if(i){
-            const slash=document.createElement('span');slash.className='nav-crumb-sep';slash.textContent='/';
-            slash.setAttribute('aria-hidden','true');localNavigation.appendChild(slash);
-          }
-          if(item)makeNavLink(item,localNavigation,'nav-crumb',active.id);
-          else {
-            const more=document.createElement('button');more.type='button';more.className='nav-more';
-            more.textContent='…';more.title='Explore the entire branch in The Tree';
-            more.setAttribute('aria-label','Explore hidden ancestors in The Tree');
-            more.addEventListener('click',()=>display('tree'));localNavigation.appendChild(more);
-          }
-        });
-      }else{
-        const near=(childIndex.get('garden')||[]).filter(p=>!coreIds.has(p.id));
-        near.slice(0,4).forEach(p=>makeNavLink(p,localNavigation,'nav-nearby',active.id));
-      }
-      if(active.id==='tree')return;
-      const next=(childIndex.get(active.id)||[]);
-      if(next.length){
-        const divider=document.createElement('span');divider.className='nav-local-divider';divider.setAttribute('aria-hidden','true');
-        localNavigation.appendChild(divider);
-        next.slice(0,3).forEach(p=>makeNavLink(p,localNavigation,'nav-nearby',active.id));
-        if(next.length>3){
-          const more=document.createElement('button');more.type='button';more.className='nav-more';
-          more.textContent='+'+(next.length-3);more.title='See all descendants in The Tree';
-          more.addEventListener('click',()=>display('tree'));localNavigation.appendChild(more);
-        }
-      }
+      if (!window.LivingSeedsNodeNavigation) throw Error('Shared node navigation engine missing');
+      window.LivingSeedsNodeNavigation.mount({
+        nodes:pages, activeId:active.id, global:navigation, local:localNavigation,
+        coreIds:['garden','tree','log'], homeId:'garden', treeId:'tree',
+        focusId:lastViewedNode, document,
+        onSelect:id=>display(id), onExplore:()=>display('tree')
+      });
     }
 
     function renderTree(){

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../assets/loader-v3.js', import.meta.url), 'utf8');
+const navigationSource = readFileSync(new URL('../assets/node-navigation.js', import.meta.url), 'utf8');
 const shell = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../assets/site.css', import.meta.url), 'utf8');
 
@@ -111,7 +112,7 @@ async function unlock() {
       {v:2,alg:'A256GCM',iv:'A'.repeat(16),ciphertext:'AAAA'} :
       path.includes('node-api') ? {baseUrl:''} : {v:1,nodes:[]}
   });
-  vm.runInNewContext(source,{
+  const context={
     document,fetch,requestAnimationFrame,cancelAnimationFrame(){},
     location:{hash:'',pathname:'/',search:''},
     history:{replaceState(){}},
@@ -121,7 +122,9 @@ async function unlock() {
     atob:value=>'A'.repeat(Math.floor(value.replace(/=/g,'').length*3/4)),
     window:{setTimeout(){}},
     URLSearchParams
-  },{timeout:5000});
+  };
+  vm.runInNewContext(navigationSource,context,{timeout:5000});
+  vm.runInNewContext(source,context,{timeout:5000});
   elements.key.value='A'.repeat(43);
   await elements['unlock-form'].listeners.submit({preventDefault(){}});
   assert.equal(elements.status.textContent,'','Invitation unlock should succeed');
@@ -130,6 +133,8 @@ async function unlock() {
 
 test('site shell and loader compile with separate contextual navigation',()=>{
   assert.doesNotThrow(()=>new vm.Script(source));
+  assert.doesNotThrow(()=>new vm.Script(navigationSource));
+  assert.match(shell,/assets\/node-navigation\.js/);
   assert.match(shell,/id="navigation" class="nav-global"/);
   assert.match(shell,/id="local-navigation" class="nav-context"/);
   assert.match(css,/\.tree-links/);
@@ -174,4 +179,18 @@ test('search reveals deep branches; existing grow control still works',async()=>
   const breadcrumb = elements['local-navigation'].children.map(node=>node.textContent).join(' ');
   assert.match(breadcrumb,/The Workshop/);
   assert.match(breadcrumb,/test 5/);
+});
+
+
+test('shared navigation recognizes project buds at any depth',()=>{
+  const scope={window:{}};
+  vm.runInNewContext(navigationSource,scope);
+  const nodes=[
+    {id:'project',title:'Project',parent:null},
+    {id:'bud-a',title:'Bud A',parent:'project'},
+    {id:'bud-b',title:'Bud B',parent:'bud-a'}
+  ];
+  const data=scope.window.LivingSeedsNodeNavigation.model(nodes,'bud-b',{coreIds:['project'],homeId:'project'});
+  assert.deepEqual(Array.from(data.path,node=>node.id),['bud-a','bud-b']);
+  assert.deepEqual(Array.from(data.core,node=>node.id),['project']);
 });
