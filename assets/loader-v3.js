@@ -103,8 +103,8 @@
         ancestors.add(current.id);
         if(current.projectRoot && current.projectRepository)
           return {label:current.projectRepository,blocked:false};
-        if(current.mode==='project' && !current.projectRepository)
-          return {label:'project awaiting attachment',blocked:true};
+        if((current.mode==='project' || current.mode==='bud') && !current.projectRepository)
+          return {label:'project awaiting publication',blocked:true};
         current=pages.find(p=>p.id===current.parent);
       }
       return {label:'Living Seeds',blocked:false};
