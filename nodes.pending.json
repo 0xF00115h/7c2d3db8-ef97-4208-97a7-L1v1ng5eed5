@@ -62,6 +62,13 @@
       "parent": "my-project-i21",
       "issue": 23,
       "mode": "project"
+    },
+    {
+      "id": "seed3-i24",
+      "title": "seed3",
+      "parent": "my-project-i21",
+      "issue": 24,
+      "mode": "project"
     }
   ]
 }
